@@ -1,8 +1,9 @@
 import type {
   Account, Assessment, CoachProfile, Complaint, CoursePackage, ExperienceBooking,
-  LeaveRequest, RenewalFollowUp, SchedulePlan, Session, SessionRecord, Ticket, TimelineEvent,
+  ExtensionRequest, LeaveRequest, RenewalFollowUp, SchedulePlan, Session, SessionRecord,
+  Ticket, TimelineEvent,
 } from '../types'
-import { addDays, daysAgo, nowStr, today, weekdayCn } from '../utils/date'
+import { addDays, daysAgo, nextWeekday, nowStr, today, weekdayCn } from '../utils/date'
 
 export interface SeedState {
   accounts: Account[]
@@ -17,7 +18,27 @@ export interface SeedState {
   tickets: Ticket[]
   renewals: RenewalFollowUp[]
   complaints: Complaint[]
+  extensionRequests: ExtensionRequest[]
   timeline: TimelineEvent[]
+}
+
+/** 课包延期合同规则（演示统一口径：最多 2 次、单次 14 天、累计 30 天） */
+export const EXT_RULE = {
+  maxExtensions: 2,
+  maxDaysPerTime: 14,
+  maxDaysTotal: 30,
+  note: '合同约定：课包有效期内最多书面申请延期 2 次，单次不超过 14 天，累计不超过 30 天；所有延期须经顾问申请并留档，口头承诺无效。',
+}
+
+/** 赵磊剩余 3 节：从下一个周一起严格按每周一排期，第 3 节必落在 14 天有效期之后，演示「频率不变上不完 → 延期或调频率」 */
+function zhaoUpcoming(t: string): Session[] {
+  const first = nextWeekday(addDays(t, 1), 1) // 明天起的下一个周一
+  return [0, 1, 2].map(i => ({
+    id: `ss_zhao_n${i + 1}`, packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou,
+    date: addDays(first, i * 7), time: '19:00-20:00',
+    kind: '私教课' as const, status: '待上课' as const,
+    focus: i === 0 ? '上肢力量保持 + 体成分复测' : '待上节课反馈后确定', isExperience: false,
+  }))
 }
 
 // 固定 ID，便于测试账号与演示脚本引用
@@ -125,14 +146,16 @@ export function buildSeed(): SeedState {
       startDate: daysAgo(45), expiryDate: addDays(daysAgo(45), 120),
       status: '进行中',
       leaveRule: { maxLeavePerMonth: 2, advanceHours: 12, note: '每月最多请假 2 次，需提前 12 小时；超出视同消课。' },
+      extensionRule: { ...EXT_RULE }, extensions: [],
       createdAt: daysAgo(45),
     },
     {
       id: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou,
       name: '私教 12 节 · 减脂塑形', totalSessions: 12, usedSessions: 9,
-      startDate: daysAgo(80), expiryDate: addDays(t, 10),
+      startDate: daysAgo(80), expiryDate: addDays(t, 14),
       status: '进行中',
       leaveRule: { maxLeavePerMonth: 2, advanceHours: 12, note: '每月最多请假 2 次，需提前 12 小时。' },
+      extensionRule: { ...EXT_RULE }, extensions: [],
       createdAt: daysAgo(80),
     },
     {
@@ -141,6 +164,7 @@ export function buildSeed(): SeedState {
       startDate: daysAgo(20), expiryDate: addDays(daysAgo(20), 120),
       status: '进行中',
       leaveRule: { maxLeavePerMonth: 2, advanceHours: 12, note: '每月最多请假 2 次，需提前 12 小时。' },
+      extensionRule: { ...EXT_RULE }, extensions: [],
       createdAt: daysAgo(20),
     },
     {
@@ -149,6 +173,19 @@ export function buildSeed(): SeedState {
       startDate: daysAgo(14), expiryDate: addDays(daysAgo(14), 90),
       status: '进行中',
       leaveRule: { maxLeavePerMonth: 2, advanceHours: 12, note: '每月最多请假 2 次，需提前 12 小时。' },
+      extensionRule: { ...EXT_RULE },
+      extensions: [
+        {
+          id: 'ext_he_1', packageId: 'pk_he', appliedAt: daysAgo(6),
+          consultantId: IDS.consultant, consultantName: '陈曦',
+          reason: '月初连续出差，无法按每周四频率完成课程',
+          kind: '延期', extendDays: 7,
+          oldExpiryDate: addDays(daysAgo(14), 90 - 7), newExpiryDate: addDays(daysAgo(14), 90),
+          oldSlots: [{ weekday: 4, time: '19:00-20:00' }], newSlots: [],
+          rescheduledCount: 1, requestId: 'er_he_1',
+          promiseNote: '因工作出差书面延期 7 天（第 1/2 次），有效期顺延至 ' + addDays(daysAgo(14), 90) + '；已重排 1 节待上课，再次延期须重新书面申请，口头延期承诺无效。',
+        },
+      ],
       createdAt: daysAgo(14),
     },
   ]
@@ -175,7 +212,7 @@ export function buildSeed(): SeedState {
     { id: 'ss_wang_6', packageId: 'pk_wang', memberId: IDS.mWang, coachId: IDS.coachLin, date: daysAgo(10), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '低冲击有氧 + 膝关节养护', isExperience: false },
     { id: 'ss_wang_next1', packageId: 'pk_wang', memberId: IDS.mWang, coachId: IDS.coachLin, date: addDays(t, 2), time: '19:00-20:00', kind: '私教课', status: '待上课', focus: '膝关节减负版序列（理疗调整后首课）', isExperience: false },
     { id: 'ss_wang_next2', packageId: 'pk_wang', memberId: IDS.mWang, coachId: IDS.coachLin, date: addDays(t, 5), time: '19:00-20:00', kind: '私教课', status: '待上课', focus: '待上节课反馈后确定', isExperience: false },
-    // 赵磊：9 节已上 + 2 节待上（课包 10 天后到期，剩 3 节）
+    // 赵磊：9 节已上 + 3 节待上（课包 14 天后到期，剩 3 节；按每周一频率最后一节贴近/超出到期日 → 续费或延期沟通）
     { id: 'ss_zhao_1', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(75), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '体测 + 基础力量评估', isExperience: false },
     { id: 'ss_zhao_2', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(68), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '上肢推拉力量', isExperience: false },
     { id: 'ss_zhao_3', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(61), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '下肢力量 + 核心', isExperience: false },
@@ -185,8 +222,7 @@ export function buildSeed(): SeedState {
     { id: 'ss_zhao_7', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(33), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '上肢力量进阶', isExperience: false },
     { id: 'ss_zhao_8', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(26), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '下肢力量进阶', isExperience: false },
     { id: 'ss_zhao_9', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: daysAgo(19), time: '19:00-20:00', kind: '私教课', status: '已完成', focus: '全身循环 + 体测对比', isExperience: false },
-    { id: 'ss_zhao_n1', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: addDays(t, 3), time: '19:00-20:00', kind: '私教课', status: '待上课', focus: '上肢力量保持 + 体成分复测', isExperience: false },
-    { id: 'ss_zhao_n2', packageId: 'pk_zhao', memberId: IDS.mZhao, coachId: IDS.coachZhou, date: addDays(t, 8), time: '19:00-20:00', kind: '私教课', status: '待上课', focus: '待上节课反馈后确定', isExperience: false },
+    ...zhaoUpcoming(t),
     // 孙悦：3 节已上 + 2 节待上（申请换教练中）
     { id: 'ss_sun_1', packageId: 'pk_sun', memberId: IDS.mSun, coachId: IDS.coachZhou, date: daysAgo(18), time: '20:00-21:00', kind: '私教课', status: '已完成', focus: '力量基础评估', isExperience: false },
     { id: 'ss_sun_2', packageId: 'pk_sun', memberId: IDS.mSun, coachId: IDS.coachZhou, date: daysAgo(11), time: '20:00-21:00', kind: '私教课', status: '已完成', focus: '深蹲模式建立', isExperience: false },
@@ -228,13 +264,25 @@ export function buildSeed(): SeedState {
     { id: 'tk_progress', type: '进度落后', memberId: IDS.mWang, coachId: IDS.coachLin, title: '课消进度落后', detail: '课包已过半程，24 节仅消耗 6 节（含 1 次请假），按当前频率到期前无法上完。', createdAt: daysAgo(3), status: '待处理', resolution: '' },
     { id: 'tk_coach_leave', type: '教练请假', memberId: IDS.mHe, coachId: IDS.coachZhou, sessionId: 'ss_he_n1', title: '周远教练周四请假', detail: '教练请假 1 天，何静周四 19:00 课程需要改期或换教练代课。', createdAt: daysAgo(1), status: '待处理', resolution: '' },
     { id: 'tk_change_coach', type: '更换教练', memberId: IDS.mSun, coachId: IDS.coachZhou, title: '孙悦申请更换教练', detail: '会员反馈课程强度偏大、沟通节奏不适应，希望更换为女教练。', createdAt: daysAgo(2), status: '待处理', resolution: '' },
-    { id: 'tk_expire', type: '课包到期', memberId: IDS.mZhao, coachId: IDS.coachZhou, title: '赵磊课包 10 天后到期', detail: '课包剩余 3 节，到期日前最多再上 2 节，需尽快沟通续费或延期。', createdAt: daysAgo(2), status: '处理中', resolution: '' },
+    { id: 'tk_expire', type: '课包到期', memberId: IDS.mZhao, coachId: IDS.coachZhou, title: '赵磊课包 14 天后到期', detail: '课包剩余 3 节，按当前每周一 1 次的频率，到期日前只能完成 2 节，第 3 节超出有效期；会员因年底工作繁忙，需沟通续费、书面延期或调整上课频率。', createdAt: daysAgo(2), status: '处理中', resolution: '' },
     { id: 'tk_reschedule_done', type: '临时改期', memberId: IDS.mWang, coachId: IDS.coachLin, sessionId: 'ss_wang_4', title: '临时改期（已处理示例）', detail: '会员临时加班，申请将课程从 18:00 改到 19:00。', createdAt: daysAgo(25), status: '已解决', resolution: '顾问协调教练档期，课程顺延至当天 19:00，未计请假。' },
   ]
 
   // ---------- 续费跟进 ----------
   const renewals: RenewalFollowUp[] = [
-    { id: 'rn_zhao', memberId: IDS.mZhao, consultantId: IDS.consultant, createdAt: daysAgo(2), summary: '电话沟通：结合周远教练记录，赵磊体脂降 2.1%、目标达成 70%，会员认可效果但觉得年底忙。建议到期前锁定 24 节力量周期套餐，本周五前给答复。', result: '跟进中' },
+    { id: 'rn_zhao', memberId: IDS.mZhao, consultantId: IDS.consultant, createdAt: daysAgo(2), summary: '电话沟通：结合周远教练记录，赵磊体脂降 2.1%、目标达成 70%，会员认可效果但年底项目冲刺、经常加班，担心剩余 3 节在到期前上不完。建议二选一：①到期前锁定 24 节力量周期套餐；②若暂不续费，可走书面延期（最多 2 次、单次 ≤14 天）或把频率从每周 1 次临时调到每周 2 次。本周五前给答复。', result: '跟进中' },
+  ]
+
+  // ---------- 延期 / 调频率申请 ----------
+  const extensionRequests: ExtensionRequest[] = [
+    {
+      id: 'er_he_1', packageId: 'pk_he', memberId: IDS.mHe,
+      consultantId: IDS.consultant, consultantName: '陈曦', createdAt: daysAgo(7),
+      reason: '会员月初连续出差（工作原因），无法按每周四 19:00 的频率完成课程，申请课包有效期顺延 7 天。',
+      kind: '延期', extendDays: 7, newSlots: [{ weekday: 4, time: '19:00-20:00' }],
+      status: '已通过', reviewedAt: daysAgo(6), reviewerName: '店长审批', rejectReason: '',
+      promiseNote: '因工作出差书面延期 7 天（第 1/2 次），新有效期 ' + addDays(daysAgo(14), 90) + '；剩余课程自动重排，口头承诺一律无效。',
+    },
   ]
 
   // ---------- 投诉 ----------
@@ -257,14 +305,15 @@ export function buildSeed(): SeedState {
     { id: 'tl_11', memberId: IDS.mZhang, at: daysAgo(9), kind: '预约体验', actorRole: 'member', actorName: '张倩', title: '预约体验课', detail: '零基础；腰椎 3 分；目标：柔韧提升、康复舒缓；介意异性教练。' },
     { id: 'tl_12', memberId: IDS.mZhang, at: daysAgo(7), kind: '安排体验', actorRole: 'consultant', actorName: '陈曦', title: '安排体验课', detail: '按“介意异性教练”匹配苏晴教练（阴瑜伽/脊柱保养）。' },
     { id: 'tl_13', memberId: IDS.mZhang, at: daysAgo(6), kind: '体验测评', actorRole: 'coach', actorName: '苏晴', title: '完成体验课测评', detail: '骨盆轻度前倾，建议阴瑜伽+脊柱保养 16 节；风险提示已签署。', professional: true },
-    { id: 'tl_14', memberId: IDS.mZhao, at: daysAgo(2), kind: '续费', actorRole: 'consultant', actorName: '陈曦', title: '续费跟进', detail: '基于训练记录沟通：体脂降 2.1%、目标达成 70%，建议续 24 节力量周期。' },
+    { id: 'tl_14', memberId: IDS.mZhao, at: daysAgo(2), kind: '续费', actorRole: 'consultant', actorName: '陈曦', title: '续费提醒与沟通', detail: '课包剩 3 节、14 天后到期；结合出勤 9/9 全勤、体脂降 2.1%、周远教练「可进力量周期」的建议沟通续费；会员因工作忙担心上不完，已告知可书面延期（≤2 次、单次 ≤14 天）或调整上课频率。' },
     { id: 'tl_15', memberId: IDS.mSun, at: daysAgo(2), kind: '更换教练', actorRole: 'member', actorName: '孙悦', title: '申请更换教练', detail: '课程强度偏大、沟通节奏不适应，希望更换为女教练。' },
     { id: 'tl_16', memberId: IDS.mHe, at: daysAgo(3), kind: '投诉', actorRole: 'member', actorName: '何静', title: '提交投诉', detail: '晚间时段总是约满，希望增加排课选择。' },
     { id: 'tl_17', memberId: IDS.mHe, at: daysAgo(1), kind: '请假', actorRole: 'coach', actorName: '周远', title: '教练请假', detail: '周远教练周四请假，何静 ' + addDays(t, 4) + ' 19:00 课程待协调。' },
     { id: 'tl_18', memberId: IDS.mLi, at: daysAgo(1), kind: '预约体验', actorRole: 'member', actorName: '李敏', title: '预约体验课', detail: '偶尔运动；肩颈 4 分；目标：体态矫正、减压助眠；介意异性教练。' },
+    { id: 'tl_19', memberId: IDS.mHe, at: daysAgo(6), kind: '延期', actorRole: 'consultant', actorName: '陈曦', title: '课包书面延期 7 天（第 1/2 次）', detail: '会员因工作出差申请延期，店长审批通过：有效期顺延至 ' + addDays(daysAgo(14), 90) + '，课包日历自动重排 1 节待上课；承诺已写入课包记录，口头延期无效。' },
   ]
 
-  return { accounts, coaches, bookings, assessments, packages, plans, sessions, records, leaves, tickets, renewals, complaints, timeline }
+  return { accounts, coaches, bookings, assessments, packages, plans, sessions, records, leaves, tickets, renewals, complaints, extensionRequests, timeline }
 }
 
-export const SEED_VERSION = 3
+export const SEED_VERSION = 4

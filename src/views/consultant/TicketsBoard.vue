@@ -90,11 +90,12 @@ function sessionOf(t: Ticket) {
         <button class="small" @click="doReschedule(t)">改期并办结</button>
       </div>
 
-      <!-- 课包到期：去续费跟进 -->
+      <!-- 课包到期：去续费跟进（含书面延期/调频率） -->
       <div v-if="t.type === '课包到期'" class="mb8">
         <router-link :to="`/consultant/member/${t.memberId}`">
-          <button class="small">基于训练进度发起续费沟通 →</button>
+          <button class="small">基于出勤/训练效果/教练建议发起续费沟通 →</button>
         </router-link>
+        <span class="muted" style="margin-left: 10px">会员因工作原因无法按期完成时，可在会员 360° 发起书面延期或调整频率，审批通过后日历自动重排。</span>
       </div>
 
       <div class="row">

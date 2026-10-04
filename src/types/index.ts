@@ -55,6 +55,59 @@ export interface Assessment {
 }
 
 // ---------------- 课包与排课 ----------------
+
+/** 课包延期合同规则（所有承诺以书面记录为准，禁止无限口头延期） */
+export interface ExtensionRule {
+  maxExtensions: number   // 课包生命周期内最多延期次数
+  maxDaysPerTime: number  // 单次最多延期天数
+  maxDaysTotal: number    // 累计最多延期天数
+  note: string            // 合同条款原文（页面直接展示）
+}
+
+/** 已生效的课包延期/频率调整（写入课包记录的书面承诺） */
+export interface PackageExtension {
+  id: string
+  packageId: string
+  appliedAt: string                  // 通过时间
+  consultantId: string
+  consultantName: string
+  reason: string                     // 会员原因（如：工作原因无法按期完成）
+  kind: '延期' | '调整频率' | '延期并调整频率'
+  extendDays: number                 // 有效期顺延天数
+  oldExpiryDate: string
+  newExpiryDate: string
+  oldSlots: WeekSlot[]               // 调整前上课频率
+  newSlots: WeekSlot[]               // 调整后上课频率（kind 含频率调整时）
+  rescheduledCount: number           // 自动重排的课程节数
+  requestId: string                  // 关联的延期申请
+  promiseNote: string                // 书面承诺摘要（防止口头争议）
+}
+
+/** 每周固定上课时段（排课计划的可序列化形态） */
+export interface WeekSlot {
+  weekday: number          // 0-6
+  time: string             // '19:00-20:00'
+}
+
+/** 顾问发起的延期 / 调频率申请（通过后才生效） */
+export interface ExtensionRequest {
+  id: string
+  packageId: string
+  memberId: string
+  consultantId: string
+  consultantName: string
+  createdAt: string
+  reason: string                     // 会员无法按期完成的原因
+  kind: '延期' | '调整频率' | '延期并调整频率'
+  extendDays: number
+  newSlots: WeekSlot[]               // 调频率后的目标频率（仅延期时与当前一致）
+  status: '待审批' | '已通过' | '已驳回'
+  reviewedAt: string
+  reviewerName: string
+  rejectReason: string
+  promiseNote: string                // 通过后要写入课包的承诺内容
+}
+
 export interface CoursePackage {
   id: string
   memberId: string
@@ -66,6 +119,8 @@ export interface CoursePackage {
   expiryDate: string
   status: '进行中' | '已用完' | '已过期' | '已续费衔接'
   leaveRule: LeaveRule
+  extensionRule: ExtensionRule
+  extensions: PackageExtension[]     // 历次书面延期/调频率承诺
   createdAt: string
 }
 
@@ -181,7 +236,7 @@ export interface Complaint {
 export type TimelineKind =
   | '预约体验' | '安排体验' | '体验测评' | '购课' | '排课'
   | '上课记录' | '请假' | '改期' | '不适上报' | '课程调整'
-  | '更换教练' | '续费' | '投诉' | '工单处理'
+  | '更换教练' | '续费' | '投诉' | '工单处理' | '延期'
 
 export interface TimelineEvent {
   id: string

@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useDataStore } from '../../stores/data'
-import { weekdayCn } from '../../utils/date'
+import { today, weekdayCn } from '../../utils/date'
 
 const auth = useAuthStore()
 const data = useDataStore()
@@ -15,6 +15,11 @@ const myLeaves = computed(() => data.leaves.filter(l => {
   return s?.memberId === mid
 }))
 const pkg = computed(() => data.activePackage(mid))
+const monthUsed = computed(() => pkg.value ? data.monthLeaveCount(mid, today().slice(0, 7)) : 0)
+const extInfo = computed(() => pkg.value ? data.extensionInfo(pkg.value) : null)
+const myExtRequests = computed(() =>
+  pkg.value ? data.extensionRequests.filter(r => r.packageId === pkg.value!.id) : []
+)
 
 const tab = ref<'leave' | 'reschedule' | 'pain' | 'coach' | 'complaint'>('leave')
 
@@ -90,7 +95,26 @@ const tabs = [
     <!-- 请假 -->
     <div v-if="tab === 'leave'" class="card">
       <h3>请假</h3>
-      <p v-if="pkg" class="muted">请假规则：{{ pkg.leaveRule.note }}</p>
+      <div v-if="pkg" class="banner warn">
+        <b>请假合同规则：</b>{{ pkg.leaveRule.note }}
+        <br />本月已批准请假 <b>{{ monthUsed }}</b>/{{ pkg.leaveRule.maxLeavePerMonth }} 次，需提前 {{ pkg.leaveRule.advanceHours }} 小时申请；超出次数或未提前申请将视同消课。
+      </div>
+
+      <!-- 延期次数与合同规则：会员继续请假时明确提示，顾问不能无限口头承诺 -->
+      <div v-if="pkg && extInfo" class="banner" :class="extInfo.used > 0 ? '' : 'warn'">
+        <template v-if="extInfo.used > 0">
+          📌 你的课包已书面延期 <b>{{ extInfo.used }}</b>/{{ pkg.extensionRule.maxExtensions }} 次
+          （累计顺延 {{ extInfo.daysUsed }}/{{ pkg.extensionRule.maxDaysTotal }} 天）。
+          合同规则：{{ pkg.extensionRule.note }}
+          <br /><b>若本次请假后仍无法在有效期前上完，请联系顾问发起书面延期/调频率申请；微信或电话里的口头承诺不作为延期依据。</b>
+        </template>
+        <template v-else>
+          ℹ️ 你的课包暂无延期记录。如因工作等原因确实无法按期完成，可请顾问协助发起书面延期
+          （最多 {{ pkg.extensionRule.maxExtensions }} 次、单次 ≤{{ pkg.extensionRule.maxDaysPerTime }} 天），
+          审批通过后课包日历会自动重排；未经书面留档的口头延期无效。
+        </template>
+      </div>
+
       <div class="form-row">
         <label>选择课程</label>
         <select v-model="leaveForm.sessionId">
@@ -102,6 +126,18 @@ const tabs = [
       </div>
       <div class="form-row"><label>请假原因</label><textarea v-model="leaveForm.reason" placeholder="如：临时出差"></textarea></div>
       <button :disabled="!upcoming.length" @click="submitLeave">提交请假</button>
+
+      <!-- 课包书面延期/调频率记录（会员可见的承诺凭证） -->
+      <template v-if="pkg && pkg.extensions.length">
+        <h3 class="mt16">课包延期 / 频率调整记录</h3>
+        <div v-for="(e, i) in pkg.extensions" :key="e.id" class="ext-record">
+          <div class="between">
+            <b>第 {{ i + 1 }} 次 · {{ e.kind }} · {{ e.appliedAt.slice(0, 10) }}</b>
+            <span class="tag amber">书面留档</span>
+          </div>
+          <div class="muted">{{ e.promiseNote }}</div>
+        </div>
+      </template>
 
       <h3 class="mt16">请假记录</h3>
       <table v-if="myLeaves.length" class="plain">
@@ -116,6 +152,17 @@ const tabs = [
         </tbody>
       </table>
       <div v-else class="empty">暂无请假记录</div>
+
+      <!-- 待审批 / 已驳回的书面申请，会员侧可见状态 -->
+      <template v-if="myExtRequests.filter(r => r.status !== '已通过').length">
+        <h3 class="mt16">延期 / 调频率申请</h3>
+        <div v-for="r in myExtRequests.filter(r => r.status !== '已通过')" :key="r.id" class="ext-record">
+          <span class="tag" :class="r.status === '待审批' ? 'amber' : 'gray'">{{ r.status }}</span>
+          <b>{{ r.kind }}</b>
+          <div class="muted">{{ r.promiseNote }}</div>
+          <div v-if="r.status === '已驳回'" class="muted" style="color: var(--danger)">驳回原因：{{ r.rejectReason }}</div>
+        </div>
+      </template>
     </div>
 
     <!-- 改期 -->
@@ -175,3 +222,16 @@ const tabs = [
     </div>
   </div>
 </template>
+
+<style scoped>
+.ext-record {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  background: #fffdf9;
+  font-size: 13px;
+}
+</style>
+

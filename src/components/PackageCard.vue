@@ -9,6 +9,7 @@ const data = useDataStore()
 const prog = computed(() => data.progressOf(props.pkg))
 const pct = computed(() => Math.min(100, Math.round((props.pkg.usedSessions / props.pkg.totalSessions) * 100)))
 const coach = computed(() => data.coachById(props.pkg.coachId))
+const extDays = computed(() => props.pkg.extensions.reduce((n, e) => n + (e.extendDays || 0), 0))
 </script>
 
 <template>
@@ -19,6 +20,7 @@ const coach = computed(() => data.coachById(props.pkg.coachId))
         <span class="tag" :class="pkg.status === '进行中' ? '' : 'gray'">{{ pkg.status }}</span>
         <span v-if="prog.behind" class="tag clay">进度落后</span>
         <span v-if="prog.expiringSoon" class="tag danger">续费提醒</span>
+        <span v-if="pkg.extensions.length" class="tag amber">已延期 {{ pkg.extensions.length }}/{{ pkg.extensionRule.maxExtensions }} 次</span>
       </div>
       <span class="muted">教练：{{ coach?.name }}</span>
     </div>
@@ -29,5 +31,12 @@ const coach = computed(() => data.coachById(props.pkg.coachId))
       <span class="muted">有效期 {{ pkg.startDate }} ~ {{ pkg.expiryDate }}（剩 {{ prog.daysLeft }} 天）</span>
     </div>
     <div class="muted mt8">请假规则：{{ pkg.leaveRule.note }}</div>
+    <div class="muted mt8">
+      延期规则：{{ pkg.extensionRule.note }}
+      <template v-if="pkg.extensions.length">
+        <br />已累计书面顺延 <b>{{ extDays }}</b> 天；最近一次：{{ pkg.extensions[pkg.extensions.length - 1].kind }}
+        （{{ pkg.extensions[pkg.extensions.length - 1].appliedAt.slice(0, 10) }}，{{ pkg.extensions[pkg.extensions.length - 1].consultantName }} 经办）。
+      </template>
+    </div>
   </div>
 </template>

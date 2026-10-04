@@ -46,10 +46,12 @@ const expSession = computed(() => upcoming.value.find(s => s.isExperience))
     <!-- 续费 / 到期提醒 -->
     <div v-if="prog?.expiringSoon" class="banner danger">
       ⏰ 课包续费提醒：剩余 <b>{{ prog.remaining }}</b> 节，有效期还剩 <b>{{ prog.daysLeft }}</b> 天。
-      顾问会结合你的真实训练进度与你沟通续费方案，你也可以主动联系顾问。
+      顾问会结合你的出勤、请假、训练效果与教练建议与你沟通续费方案；如因工作原因无法按期完成，
+      可由顾问发起<b>书面延期或调整上课频率</b>（合同最多 {{ pkg?.extensionRule.maxExtensions }} 次），
+      审批通过后课表自动重排——所有承诺以课包记录为准，口头延期无效。
     </div>
     <div v-if="prog?.behind" class="banner warn">
-      📉 课消进度落后：按当前上课频率，课包到期前可能上不完，建议与顾问协商加课或调整排课。
+      📉 课消进度落后：按当前上课频率，课包到期前可能上不完，建议与顾问协商加课、书面延期或调整排课。
     </div>
 
     <!-- 体验课流程状态 -->

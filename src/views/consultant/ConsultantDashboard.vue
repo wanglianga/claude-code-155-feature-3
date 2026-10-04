@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useDataStore } from '../../stores/data'
+import { slotsText } from '../../utils/date'
+import type { LeaveRequest } from '../../types'
 
 const auth = useAuthStore()
 const data = useDataStore()
@@ -12,6 +14,7 @@ const alerts = computed(() => data.renewalAlerts)
 const tickets = computed(() => data.openTickets)
 const leaves = computed(() => data.pendingLeaves)
 const complaints = computed(() => data.openComplaints)
+const pendingExt = computed(() => data.pendingExtensions)
 
 const behindMembers = computed(() =>
   data.packages
@@ -22,6 +25,15 @@ const behindMembers = computed(() =>
 function sessionLabel(sessionId: string) {
   const s = data.sessions.find(x => x.id === sessionId)
   return s ? `${s.date} ${s.time}（${data.nameOf(s.memberId)}）` : ''
+}
+
+/** 请假会员的课包延期情况（再次请假时提示延期次数与合同规则，不能无限口头承诺） */
+function extOfLeave(l: LeaveRequest) {
+  const s = data.sessions.find(x => x.id === l.sessionId)
+  const pkg = s ? data.packages.find(p => p.id === s.packageId) : undefined
+  if (!pkg) return null
+  const info = data.extensionInfo(pkg)
+  return { pkg, info, slots: slotsText(data.slotsOf(pkg.id)) }
 }
 
 function decideLeave(id: string, ok: boolean) {
@@ -79,15 +91,45 @@ function decideLeave(id: string, ok: boolean) {
       </div>
     </div>
 
+    <!-- 延期 / 调频率待审批：承诺先留档再执行，不允许口头延期 -->
+    <div class="card" v-if="pendingExt.length">
+      <h3>📝 延期 / 调频率申请待审批（{{ pendingExt.length }}）</h3>
+      <div v-for="r in pendingExt" :key="r.id" class="ext-row">
+        <div class="between">
+          <div>
+            <span class="tag amber">{{ r.kind }}</span>
+            <b>{{ data.nameOf(r.memberId) }}</b>
+            <span class="muted">{{ r.createdAt }} · {{ r.consultantName }} 发起</span>
+          </div>
+          <router-link :to="`/consultant/member/${r.memberId}`"><button class="small ghost">去会员 360° 审批 →</button></router-link>
+        </div>
+        <div class="muted mt8">{{ r.promiseNote }}</div>
+      </div>
+    </div>
+
     <div class="grid cols-2">
       <!-- 请假审批 -->
       <div class="card">
         <h3>待处理请假</h3>
-        <div v-for="l in leaves" :key="l.id" class="between mb8" style="border-bottom: 1px solid var(--line); padding-bottom: 8px">
+        <div v-for="l in leaves" :key="l.id" class="between mb8 leave-row">
           <div>
             <span class="tag" :class="l.byRole === 'coach' ? 'clay' : 'amber'">{{ l.byRole === 'coach' ? '教练请假' : '会员请假' }}</span>
             <b>{{ data.nameOf(l.byId) }}</b> · {{ sessionLabel(l.sessionId) }}
             <div class="muted">{{ l.reason }}<span v-if="!l.withinRule" class="tag danger">超出请假规则</span></div>
+            <!-- 会员再次请假：提示该课包延期次数与合同规则，不能再口头承诺 -->
+            <div v-if="l.byRole === 'member' && extOfLeave(l)" class="ext-hint">
+              <template v-if="extOfLeave(l)!.info.used > 0">
+                ⚠️ 该课包已书面延期 <b>{{ extOfLeave(l)!.info.used }}</b>/{{ extOfLeave(l)!.pkg.extensionRule.maxExtensions }} 次
+                （累计 {{ extOfLeave(l)!.info.daysUsed }}/{{ extOfLeave(l)!.pkg.extensionRule.maxDaysTotal }} 天），
+                当前频率「{{ extOfLeave(l)!.slots }}」。本次请假若影响到期前完成，须走书面延期/调频率申请，
+                <b>不得再口头承诺</b>。
+              </template>
+              <template v-else>
+                ℹ️ 该课包尚无延期记录（额度 {{ extOfLeave(l)!.pkg.extensionRule.maxExtensions }} 次、单次 ≤{{ extOfLeave(l)!.pkg.extensionRule.maxDaysPerTime }} 天）；
+                如会员因工作原因无法按期完成，可在会员 360° 发起书面延期/调频率申请。
+              </template>
+              <router-link :to="`/consultant/member/${l.byId}`"><button class="small ghost">去处理 →</button></router-link>
+            </div>
           </div>
           <div class="row">
             <button class="small" @click="decideLeave(l.id, true)">批准</button>
@@ -134,3 +176,30 @@ function decideLeave(id: string, ok: boolean) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.ext-row {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: #fffdf9;
+  font-size: 13px;
+}
+.leave-row {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  align-items: flex-start;
+}
+.ext-hint {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--amber-soft);
+  color: #6d5518;
+  font-size: 12.5px;
+  max-width: 640px;
+}
+</style>
+
