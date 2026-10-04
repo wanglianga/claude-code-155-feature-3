@@ -14,13 +14,16 @@ const kindColor: Record<string, string> = {
   预约体验: 'gray', 安排体验: 'gray', 购课: '', 排课: 'gray',
   上课记录: '', 请假: 'amber', 改期: 'amber', 不适上报: 'danger',
   课程调整: 'clay', 更换教练: 'clay', 续费: '', 投诉: 'danger', 工单处理: 'gray', 体验测评: 'clay',
+  延期申请: 'amber', 延期审批: 'clay', 承诺记录: '',
 }
+
+const roleLabel: Record<string, string> = { member: '会员', coach: '教练', consultant: '顾问', manager: '店长' }
 </script>
 
 <template>
   <div class="timeline">
     <div v-for="e in events" :key="e.id" class="tl-item" :class="{ pro: e.professional }">
-      <div class="tl-time">{{ e.at }} · {{ e.actorName }}（{{ { member: '会员', coach: '教练', consultant: '顾问' }[e.actorRole] }}）</div>
+      <div class="tl-time">{{ e.at }} · {{ e.actorName }}（{{ roleLabel[e.actorRole] ?? e.actorRole }}）</div>
       <div class="tl-title">
         {{ e.title }}
         <span class="tag" :class="kindColor[e.kind]">{{ e.kind }}</span>

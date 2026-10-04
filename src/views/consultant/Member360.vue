@@ -6,6 +6,7 @@ import { useDataStore } from '../../stores/data'
 import TrainingTimeline from '../../components/TrainingTimeline.vue'
 import ProfessionalProfile from '../../components/ProfessionalProfile.vue'
 import PackageCard from '../../components/PackageCard.vue'
+import CommitmentList from '../../components/CommitmentList.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -79,8 +80,17 @@ function reply(cId: string) {
     </div>
 
     <div class="card" v-if="pkg">
-      <h3>当前课包</h3>
-      <PackageCard :pkg="pkg" />
+      <div class="between">
+        <h3 style="margin: 0">当前课包</h3>
+        <router-link :to="`/consultant/renewal/${mid}`"><button class="small">续费沟通 / 延期申请 →</button></router-link>
+      </div>
+      <div class="mt8"><PackageCard :pkg="pkg" /></div>
+    </div>
+
+    <!-- 课包承诺记录：所有承诺落字，防止口头延期争议 -->
+    <div class="card" v-if="pkg">
+      <h3>课包承诺记录</h3>
+      <CommitmentList :package-id="pkg.id" />
     </div>
 
     <div class="grid cols-2">

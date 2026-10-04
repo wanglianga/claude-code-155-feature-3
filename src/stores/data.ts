@@ -1,15 +1,24 @@
 import { defineStore } from 'pinia'
 import type {
   Account, Assessment, CoachProfile, Complaint, CoursePackage, ExperienceBooking,
-  LeaveRequest, PainChange, RenewalFollowUp, SchedulePlan, Session, SessionRecord,
-  Ticket, TicketType, TimelineEvent, TimelineKind,
+  ExtensionRequest, LeaveRequest, PackageCommitment, PainChange, RenewalFollowUp, Role, SchedulePlan,
+  Session, SessionRecord, Ticket, TicketType, TimelineEvent, TimelineKind, WeekdaySlot,
 } from '../types'
+import { EXTENSION_POLICY } from '../types'
 import { buildSeed, SEED_VERSION, type SeedState } from '../data/seed'
-import { addDays, daysBetween, nextWeekday, nowStr, today, uid, weekdayCn } from '../utils/date'
+import { addDays, daysBetween, nextWeekday, nowStr, today, uid, weekdayCn, WEEKDAY_CN } from '../utils/date'
 
 const KEY = `yoga_db_v${SEED_VERSION}`
 
-export interface WeekdaySlot { weekday: number; time: string }
+export type { WeekdaySlot }
+
+/** 延期规则校验结果 */
+export interface ExtensionCheck {
+  canApply: boolean
+  timesLeft: number
+  daysLeft: number
+  blockReason: string
+}
 
 export const useDataStore = defineStore('data', {
   state: (): SeedState => buildSeed(),
@@ -101,6 +110,30 @@ export const useDataStore = defineStore('data', {
         upcoming: ss.filter(x => x.status === '待上课').length,
       }
     },
+
+    // ---- 延期 / 承诺 ----
+    commitmentsOf: (s) => (packageId: string) =>
+      s.commitments.filter(c => c.packageId === packageId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+
+    extensionsOf: (s) => (memberId: string) =>
+      s.extensions.filter(e => e.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+
+    pendingExtensions: (s) => s.extensions.filter(e => e.status === '待审批'),
+
+    /** 合同规则校验：延期次数 / 累计天数是否还有额度 */
+    extensionCheck: () => (pkg: CoursePackage): ExtensionCheck => {
+      const timesLeft = EXTENSION_POLICY.maxTimes - pkg.extensionCount
+      const daysLeft = EXTENSION_POLICY.maxTotalDays - pkg.extensionDaysTotal
+      let blockReason = ''
+      if (timesLeft <= 0) blockReason = `已达合同延期上限（${EXTENSION_POLICY.maxTimes} 次），不得再延期；顾问不得口头承诺，请引导会员在到期前完成课程或办理续费衔接。`
+      else if (daysLeft <= 0) blockReason = `累计延期已达 ${EXTENSION_POLICY.maxTotalDays} 天上限，不得再延期。`
+      return { canApply: timesLeft > 0 && daysLeft > 0, timesLeft: Math.max(0, timesLeft), daysLeft: Math.max(0, daysLeft), blockReason }
+    },
+
+    /** 会员请假次数（按月） */
+    memberLeavesOf: (s) => (memberId: string) =>
+      s.leaves.filter(l => l.byRole === 'member'
+        && s.sessions.find(x => x.id === l.sessionId)?.memberId === memberId),
   },
 
   actions: {
@@ -123,7 +156,7 @@ export const useDataStore = defineStore('data', {
       this.persist()
     },
 
-    log(memberId: string, kind: TimelineKind, actorRole: 'member' | 'consultant' | 'coach', actorName: string, title: string, detail: string, professional = false) {
+    log(memberId: string, kind: TimelineKind, actorRole: Role, actorName: string, title: string, detail: string, professional = false) {
       this.timeline.push({ id: uid('tl'), memberId, at: nowStr(), kind, actorRole, actorName, title, detail, professional })
     },
 
@@ -177,6 +210,7 @@ export const useDataStore = defineStore('data', {
         id: uid('pk'), memberId, coachId, name, totalSessions, usedSessions: 0,
         startDate: today(), expiryDate: addDays(today(), validDays), status: '进行中',
         leaveRule: { maxLeavePerMonth: 2, advanceHours: 12, note: '每月最多请假 2 次，需提前 12 小时；超出视同消课。' },
+        extensionCount: 0, extensionDaysTotal: 0,
         createdAt: nowStr(),
       }
       this.packages.push(pkg)
@@ -343,12 +377,142 @@ export const useDataStore = defineStore('data', {
       this.log(memberId, '续费', 'consultant', consultantName, '续费跟进', summary)
       if (result === '已续费' && renew) {
         const old = this.activePackage(memberId)
-        if (old) old.status = '已续费衔接'
+        if (old) {
+          old.status = '已续费衔接'
+          // 续费承诺落字：写入课包记录，会员/教练/顾问可见同一份
+          this.commitments.unshift({
+            id: uid('cm'), packageId: old.id, memberId, createdAt: nowStr(),
+            actorRole: 'consultant', actorName: consultantName, kind: '续费',
+            content: `会员确认续费：新课包「${renew.name}」${renew.totalSessions} 节，有效期 ${renew.validDays} 天，原课包剩余课时已衔接。`,
+          })
+        }
         this.purchasePackage(memberId, old?.coachId ?? '', renew.name, renew.totalSessions, renew.validDays, renew.slots, consultantName)
         // purchasePackage 内部已 persist
       }
       const tk = this.tickets.find(t => t.memberId === memberId && t.type === '课包到期' && t.status !== '已解决')
       if (tk && result !== '跟进中') { tk.status = '已解决'; tk.resolution = `续费跟进结果：${result}` }
+      this.persist()
+    },
+
+    // ---------- 顾问：发起延期 / 调频申请（合同规则校验，口头承诺无效） ----------
+    submitExtensionRequest(packageId: string, consultantId: string, consultantName: string, payload: { reason: string; extendDays: number; newSlots: WeekdaySlot[] }): ExtensionCheck {
+      const pkg = this.packages.find(p => p.id === packageId)
+      if (!pkg) return { canApply: false, timesLeft: 0, daysLeft: 0, blockReason: '课包不存在' }
+      const check = this.extensionCheck(pkg)
+      if (!check.canApply) return check
+      if (payload.extendDays > 0) {
+        if (payload.extendDays > EXTENSION_POLICY.maxDaysPerTime)
+          return { ...check, canApply: false, blockReason: `单次延期不能超过 ${EXTENSION_POLICY.maxDaysPerTime} 天。` }
+        if (payload.extendDays > check.daysLeft)
+          return { ...check, canApply: false, blockReason: `累计延期不能超过 ${EXTENSION_POLICY.maxTotalDays} 天（剩余额度 ${check.daysLeft} 天）。` }
+      }
+      const req: ExtensionRequest = {
+        id: uid('ex'), packageId, memberId: pkg.memberId, consultantId, consultantName,
+        createdAt: nowStr(), reason: payload.reason, extendDays: payload.extendDays,
+        newSlots: payload.newSlots, status: '待审批', decidedAt: '', decidedBy: '', decideNote: '',
+      }
+      this.extensions.unshift(req)
+      const what = payload.extendDays > 0
+        ? `延期 ${payload.extendDays} 天（至 ${addDays(pkg.expiryDate, payload.extendDays)}）`
+        : '调整上课频率'
+      const slots = payload.newSlots.length
+        ? `；新频率：${payload.newSlots.map(s => `每周${WEEKDAY_CN[s.weekday].slice(1)} ${s.time}`).join('、')}`
+        : ''
+      this.log(pkg.memberId, '延期申请', 'consultant', consultantName, '发起延期/调频申请',
+        `${what}${slots}。原因：${payload.reason}。提交店长审批，通过后自动重排课包日历并写入课包记录。`)
+      this.persist()
+      return check
+    },
+
+    // ---------- 店长：审批延期申请（通过后自动重排剩余课程） ----------
+    decideExtension(requestId: string, approve: boolean, decideNote: string, managerName: string) {
+      const req = this.extensions.find(e => e.id === requestId)
+      if (!req || req.status !== '待审批') return
+      const pkg = this.packages.find(p => p.id === req.packageId)
+      req.status = approve ? '已通过' : '已拒绝'
+      req.decidedAt = nowStr()
+      req.decidedBy = managerName
+      req.decideNote = decideNote
+      if (!approve) {
+        this.log(req.memberId, '延期审批', 'manager', managerName, '延期申请被拒绝',
+          `原因：${decideNote || '未填写'}。顾问与会员需按原到期日 ${pkg?.expiryDate ?? ''} 安排剩余课程。`)
+        this.persist()
+        return
+      }
+      if (!pkg) return
+      // 1) 更新课包有效期与延期计数
+      const oldExpiry = pkg.expiryDate
+      if (req.extendDays > 0) {
+        pkg.expiryDate = addDays(pkg.expiryDate, req.extendDays)
+        pkg.extensionCount += 1
+        pkg.extensionDaysTotal += req.extendDays
+      }
+      // 2) 调整上课频率：停用旧计划，建立新计划
+      if (req.newSlots.length) {
+        this.plans.filter(p => p.packageId === pkg.id && p.active).forEach(p => { p.active = false })
+        req.newSlots.forEach(s => this.plans.push({ id: uid('pl'), packageId: pkg.id, memberId: pkg.memberId, coachId: pkg.coachId, weekday: s.weekday, time: s.time, active: true }))
+      }
+      // 3) 自动重排剩余课程
+      const scheduled = this.reschedulePackageSessions(pkg)
+      // 4) 承诺写入课包记录（防止口头延期争议）
+      const parts: string[] = []
+      if (req.extendDays > 0) parts.push(`课包有效期延长 ${req.extendDays} 天：${oldExpiry} → ${pkg.expiryDate}（第 ${pkg.extensionCount}/${EXTENSION_POLICY.maxTimes} 次延期，累计 ${pkg.extensionDaysTotal} 天）`)
+      if (req.newSlots.length) parts.push(`上课频率调整为 ${req.newSlots.map(s => `每周${WEEKDAY_CN[s.weekday].slice(1)} ${s.time}`).join('、')}`)
+      parts.push(`剩余 ${pkg.totalSessions - pkg.usedSessions} 节已自动重排（${scheduled} 节排入新日历）`)
+      const content = parts.join('；') + '。'
+      this.commitments.unshift({
+        id: uid('cm'), packageId: pkg.id, memberId: pkg.memberId, createdAt: nowStr(),
+        actorRole: 'manager', actorName: managerName, kind: req.extendDays > 0 ? '延期' : '调频', content,
+      })
+      this.log(pkg.memberId, '延期审批', 'manager', managerName, '延期申请已通过',
+        `${content}${decideNote ? ` 审批意见：${decideNote}` : ''} 承诺已写入课包记录。`)
+      // 5) 关联的「课包到期」工单自动办结
+      const tk = this.tickets.find(t => t.memberId === pkg.memberId && t.type === '课包到期' && t.status !== '已解决')
+      if (tk) { tk.status = '已解决'; tk.resolution = `延期申请已通过：${content}` }
+      this.persist()
+    },
+
+    /** 自动重排：清除该课包未来待上课，按（新）频率从明天起把剩余课时排入有效期内的日历 */
+    reschedulePackageSessions(pkg: CoursePackage): number {
+      const remaining = pkg.totalSessions - pkg.usedSessions
+      // 保留原待上课的重点描述，按顺序带给新课
+      const oldFocus = this.sessions
+        .filter(s => s.packageId === pkg.id && s.status === '待上课' && s.date >= today())
+        .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+        .map(s => s.focus)
+      this.sessions = this.sessions.filter(s => !(s.packageId === pkg.id && s.status === '待上课' && s.date >= today()))
+      const slots = this.plans
+        .filter(p => p.packageId === pkg.id && p.active)
+        .map(p => ({ weekday: p.weekday, time: p.time }))
+        .sort((a, b) => a.weekday - b.weekday)
+      if (!slots.length || remaining <= 0) return 0
+      let added = 0
+      let date = addDays(today(), 1)
+      // 从明天起逐日扫描，命中固定时段且未超有效期则排课
+      while (added < remaining && date <= pkg.expiryDate) {
+        const slot = slots.find(s => s.weekday === new Date(date + 'T00:00:00').getDay())
+        if (slot) {
+          this.sessions.push({
+            id: uid('ss'), packageId: pkg.id, memberId: pkg.memberId, coachId: pkg.coachId,
+            date, time: slot.time, kind: '私教课', status: '待上课',
+            focus: oldFocus[added] ?? '待上节课反馈后确定', isExperience: false,
+          })
+          added += 1
+        }
+        date = addDays(date, 1)
+      }
+      return added
+    },
+
+    // ---------- 顾问：手动记录沟通承诺（所有承诺写入课包记录） ----------
+    addCommitment(packageId: string, actorRole: 'consultant' | 'manager', actorName: string, content: string) {
+      const pkg = this.packages.find(p => p.id === packageId)
+      if (!pkg) return
+      this.commitments.unshift({
+        id: uid('cm'), packageId, memberId: pkg.memberId, createdAt: nowStr(),
+        actorRole, actorName, kind: '沟通承诺', content,
+      })
+      this.log(pkg.memberId, '承诺记录', actorRole, actorName, '沟通承诺写入课包记录', content)
       this.persist()
     },
 

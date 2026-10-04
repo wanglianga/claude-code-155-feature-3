@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useDataStore } from '../../stores/data'
 import PackageCard from '../../components/PackageCard.vue'
 import ProfessionalProfile from '../../components/ProfessionalProfile.vue'
+import CommitmentList from '../../components/CommitmentList.vue'
 import { weekdayCn } from '../../utils/date'
 
 const auth = useAuthStore()
@@ -15,6 +16,7 @@ const upcoming = computed(() => data.upcomingSessions(mid))
 const booking = computed(() => data.bookingOf(mid))
 const assessment = computed(() => data.latestAssessment(mid))
 const prog = computed(() => pkg.value ? data.progressOf(pkg.value) : null)
+const pendingExtension = computed(() => data.extensionsOf(mid).find(e => e.status === '待审批'))
 
 // ---- 确认购课 ----
 const showPurchase = ref(false)
@@ -50,6 +52,10 @@ const expSession = computed(() => upcoming.value.find(s => s.isExperience))
     </div>
     <div v-if="prog?.behind" class="banner warn">
       📉 课消进度落后：按当前上课频率，课包到期前可能上不完，建议与顾问协商加课或调整排课。
+    </div>
+    <div v-if="pendingExtension" class="banner warn">
+      ⏳ 延期申请审批中：{{ pendingExtension.extendDays > 0 ? `延期 ${pendingExtension.extendDays} 天` : '调整上课频率' }}（{{ pendingExtension.createdAt }} 提交），
+      通过后课包日历将自动重排，结果会写入课包承诺记录。
     </div>
 
     <!-- 体验课流程状态 -->
@@ -98,6 +104,13 @@ const expSession = computed(() => upcoming.value.find(s => s.isExperience))
     <div v-if="pkg" class="card">
       <h3>当前课包</h3>
       <PackageCard :pkg="pkg" />
+    </div>
+
+    <!-- 课包承诺记录：延期/调频/续费承诺全部落字，与顾问看到的是同一份 -->
+    <div v-if="pkg" class="card">
+      <h3>课包承诺记录</h3>
+      <p class="muted">顾问与店长对你的每一项承诺都记录在此，口头承诺无效。</p>
+      <CommitmentList :package-id="pkg.id" />
     </div>
 
     <!-- 近期课程 -->

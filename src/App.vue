@@ -27,10 +27,13 @@ const navs = computed(() => {
       { to: '/consultant/tickets', label: '异常工单' },
     ]
   }
+  if (auth.role === 'manager') {
+    return [{ to: '/manager', label: '延期审批' }]
+  }
   return []
 })
 
-const roleName = computed(() => ({ member: '会员', coach: '教练', consultant: '顾问' } as Record<string, string>)[auth.role ?? ''] ?? '')
+const roleName = computed(() => ({ member: '会员', coach: '教练', consultant: '顾问', manager: '店长' } as Record<string, string>)[auth.role ?? ''] ?? '')
 
 function logout() {
   auth.logout()

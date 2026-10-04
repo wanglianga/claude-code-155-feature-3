@@ -14,16 +14,17 @@ const password = ref('123456')
 const error = ref('')
 
 const groups = computed(() => {
-  const g: Record<Role, typeof data.accounts> = { member: [], coach: [], consultant: [] }
+  const g: Record<Role, typeof data.accounts> = { member: [], coach: [], consultant: [], manager: [] }
   data.accounts.forEach(a => g[a.role].push(a))
   return g
 })
 
-const roleLabel: Record<Role, string> = { member: '会员', coach: '教练', consultant: '顾问' }
+const roleLabel: Record<Role, string> = { member: '会员', coach: '教练', consultant: '顾问', manager: '店长' }
 const roleDesc: Record<Role, string> = {
   member: '预约体验课 / 查看课表课包 / 请假改期 / 不适上报',
   coach: '周课表 / 体验测评 / 课后记录 / 课程调整',
-  consultant: '转化看板 / 安排体验课 / 异常工单 / 续费跟进',
+  consultant: '转化看板 / 安排体验课 / 异常工单 / 续费沟通与延期申请',
+  manager: '延期申请审批 / 合同规则把关',
 }
 
 function login() {
@@ -31,7 +32,7 @@ function login() {
   if (!acc) { error.value = '请选择账号'; return }
   if (acc.password !== password.value) { error.value = '密码错误（演示账号密码均为 123456）'; return }
   auth.login(acc)
-  router.replace(acc.role === 'member' ? '/member' : acc.role === 'coach' ? '/coach' : '/consultant')
+  router.replace(acc.role === 'member' ? '/member' : acc.role === 'coach' ? '/coach' : acc.role === 'manager' ? '/manager' : '/consultant')
 }
 </script>
 
@@ -41,7 +42,7 @@ function login() {
       <h2 style="margin: 0 0 4px">🧘 澄心瑜伽 · 私教全流程管理</h2>
       <p class="muted">体验课测评 · 排课 · 训练记录 · 续费与转教练 —— 三个角色，同一套训练记录</p>
 
-      <div v-for="r in (['consultant', 'coach', 'member'] as Role[])" :key="r" class="mb8">
+      <div v-for="r in (['consultant', 'manager', 'coach', 'member'] as Role[])" :key="r" class="mb8">
         <div class="row mb8">
           <b>{{ roleLabel[r] }}</b>
           <span class="muted">{{ roleDesc[r] }}</span>

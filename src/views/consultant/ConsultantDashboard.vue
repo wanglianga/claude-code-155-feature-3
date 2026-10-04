@@ -47,14 +47,15 @@ function decideLeave(id: string, ok: boolean) {
       <div class="card">
         <h3>续费提醒（剩余 ≤4 节或 ≤21 天到期）</h3>
         <table v-if="alerts.length" class="plain">
-          <thead><tr><th>会员</th><th>课包</th><th>剩余</th><th>到期</th><th></th></tr></thead>
+          <thead><tr><th>会员</th><th>课包</th><th>剩余</th><th>到期</th><th>延期</th><th></th></tr></thead>
           <tbody>
             <tr v-for="a in alerts" :key="a.pkg.id">
               <td><b>{{ data.nameOf(a.pkg.memberId) }}</b></td>
               <td>{{ a.pkg.name }}</td>
               <td>{{ a.remaining }} 节</td>
               <td>{{ a.daysLeft }} 天</td>
-              <td><router-link :to="`/consultant/member/${a.pkg.memberId}`"><button class="small">续费跟进</button></router-link></td>
+              <td><span class="tag" :class="a.pkg.extensionCount >= 2 ? 'danger' : a.pkg.extensionCount > 0 ? 'amber' : 'gray'">{{ a.pkg.extensionCount }}/2 次</span></td>
+              <td><router-link :to="`/consultant/renewal/${a.pkg.memberId}`"><button class="small">续费沟通</button></router-link></td>
             </tr>
           </tbody>
         </table>

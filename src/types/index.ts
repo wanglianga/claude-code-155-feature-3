@@ -3,7 +3,7 @@
 // 会员 / 顾问 / 教练 三角色围绕「同一套训练记录」协作
 // ============================================================
 
-export type Role = 'member' | 'consultant' | 'coach'
+export type Role = 'member' | 'consultant' | 'coach' | 'manager'
 
 export interface Account {
   id: string
@@ -66,6 +66,8 @@ export interface CoursePackage {
   expiryDate: string
   status: '进行中' | '已用完' | '已过期' | '已续费衔接'
   leaveRule: LeaveRule
+  extensionCount: number      // 已延期次数（合同规则限制上限）
+  extensionDaysTotal: number  // 累计延期天数
   createdAt: string
 }
 
@@ -76,6 +78,8 @@ export interface LeaveRule {
 }
 
 // 排课计划：每周固定时段
+export interface WeekdaySlot { weekday: number; time: string }
+
 export interface SchedulePlan {
   id: string
   packageId: string
@@ -167,6 +171,43 @@ export interface RenewalFollowUp {
   result: '跟进中' | '已续费' | '暂缓'
 }
 
+// ---------------- 课包延期 / 调频申请（合同规则约束，审批制） ----------------
+/** 合同规则：延期不能靠顾问口头承诺，必须走申请-审批并写入课包记录 */
+export const EXTENSION_POLICY = {
+  maxTimes: 2,        // 每课包最多延期次数
+  maxDaysPerTime: 30, // 单次最多延期天数
+  maxTotalDays: 45,   // 累计最多延期天数
+  note: '合同规则：每课包最多延期 2 次，单次不超过 30 天，累计不超过 45 天；延期须由顾问发起申请、店长审批通过后生效并写入课包记录，口头承诺无效。',
+}
+
+export interface ExtensionRequest {
+  id: string
+  packageId: string
+  memberId: string
+  consultantId: string
+  consultantName: string
+  createdAt: string
+  reason: string             // 申请原因，如「会员工作外派，无法按期完成」
+  extendDays: number         // 延期天数；0 = 仅调整上课频率
+  newSlots: WeekdaySlot[]    // 调整后的每周固定时段（为空表示沿用原频率）
+  status: '待审批' | '已通过' | '已拒绝'
+  decidedAt: string
+  decidedBy: string          // 审批人（店长）
+  decideNote: string
+}
+
+// ---------------- 课包承诺记录（所有承诺落字，防止口头延期争议） ----------------
+export interface PackageCommitment {
+  id: string
+  packageId: string
+  memberId: string
+  createdAt: string
+  actorRole: Role
+  actorName: string
+  kind: '延期' | '调频' | '续费' | '沟通承诺'
+  content: string            // 承诺内容，如「有效期延长 14 天至 2026-10-18，剩余 3 节已重排」
+}
+
 // ---------------- 投诉 ----------------
 export interface Complaint {
   id: string
@@ -182,6 +223,7 @@ export type TimelineKind =
   | '预约体验' | '安排体验' | '体验测评' | '购课' | '排课'
   | '上课记录' | '请假' | '改期' | '不适上报' | '课程调整'
   | '更换教练' | '续费' | '投诉' | '工单处理'
+  | '延期申请' | '延期审批' | '承诺记录'
 
 export interface TimelineEvent {
   id: string

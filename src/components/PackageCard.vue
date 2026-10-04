@@ -19,6 +19,7 @@ const coach = computed(() => data.coachById(props.pkg.coachId))
         <span class="tag" :class="pkg.status === '进行中' ? '' : 'gray'">{{ pkg.status }}</span>
         <span v-if="prog.behind" class="tag clay">进度落后</span>
         <span v-if="prog.expiringSoon" class="tag danger">续费提醒</span>
+        <span v-if="pkg.extensionCount > 0" class="tag amber">已延期 {{ pkg.extensionCount }}/2 次</span>
       </div>
       <span class="muted">教练：{{ coach?.name }}</span>
     </div>

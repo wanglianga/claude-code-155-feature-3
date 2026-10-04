@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useDataStore } from '../../stores/data'
+import { EXTENSION_POLICY } from '../../types'
 import { weekdayCn } from '../../utils/date'
 
 const auth = useAuthStore()
@@ -91,6 +92,11 @@ const tabs = [
     <div v-if="tab === 'leave'" class="card">
       <h3>请假</h3>
       <p v-if="pkg" class="muted">请假规则：{{ pkg.leaveRule.note }}</p>
+      <div v-if="pkg && pkg.extensionCount > 0" class="banner warn">
+        ⚠️ 本课包已延期 <b>{{ pkg.extensionCount }}/{{ EXTENSION_POLICY.maxTimes }}</b> 次（累计 {{ pkg.extensionDaysTotal }}/{{ EXTENSION_POLICY.maxTotalDays }} 天）。
+        {{ EXTENSION_POLICY.note }}
+        继续请假可能导致剩余课程在到期前无法排完，建议优先到馆上课或与顾问确认安排。
+      </div>
       <div class="form-row">
         <label>选择课程</label>
         <select v-model="leaveForm.sessionId">

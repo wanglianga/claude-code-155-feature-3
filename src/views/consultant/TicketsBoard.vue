@@ -90,10 +90,10 @@ function sessionOf(t: Ticket) {
         <button class="small" @click="doReschedule(t)">改期并办结</button>
       </div>
 
-      <!-- 课包到期：去续费跟进 -->
+      <!-- 课包到期：去续费沟通页（续费提醒 / 延期申请 / 承诺记录） -->
       <div v-if="t.type === '课包到期'" class="mb8">
-        <router-link :to="`/consultant/member/${t.memberId}`">
-          <button class="small">基于训练进度发起续费沟通 →</button>
+        <router-link :to="`/consultant/renewal/${t.memberId}`">
+          <button class="small">进入续费沟通：生成提醒 / 发起延期申请 →</button>
         </router-link>
       </div>
 

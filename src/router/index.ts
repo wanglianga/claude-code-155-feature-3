@@ -14,6 +14,8 @@ const ConsultantDashboard = () => import('../views/consultant/ConsultantDashboar
 const ArrangeExperience = () => import('../views/consultant/ArrangeExperience.vue')
 const TicketsBoard = () => import('../views/consultant/TicketsBoard.vue')
 const Member360 = () => import('../views/consultant/Member360.vue')
+const RenewalTalk = () => import('../views/consultant/RenewalTalk.vue')
+const ExtensionApprovals = () => import('../views/manager/ExtensionApprovals.vue')
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -31,6 +33,8 @@ export const router = createRouter({
     { path: '/consultant/arrange', component: ArrangeExperience, meta: { role: 'consultant' } },
     { path: '/consultant/tickets', component: TicketsBoard, meta: { role: 'consultant' } },
     { path: '/consultant/member/:id', component: Member360, meta: { role: 'consultant' } },
+    { path: '/consultant/renewal/:id', component: RenewalTalk, meta: { role: 'consultant' } },
+    { path: '/manager', component: ExtensionApprovals, meta: { role: 'manager' } },
     { path: '/:pathMatch(.*)*', redirect: '/login' },
   ],
 })
@@ -39,17 +43,14 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn && to.path !== '/login') return '/login'
   const need = to.meta.role as string | undefined
+  const homeOf = (role: string | null) =>
+    role === 'member' ? '/member' : role === 'coach' ? '/coach' : role === 'manager' ? '/manager' : role === 'consultant' ? '/consultant' : '/login'
   if (need && auth.role !== need) {
     // 已登录但角色不符，回各自首页
-    if (auth.role === 'member') return '/member'
-    if (auth.role === 'coach') return '/coach'
-    if (auth.role === 'consultant') return '/consultant'
-    return '/login'
+    return homeOf(auth.role)
   }
   if (to.path === '/login' && auth.isLoggedIn) {
-    if (auth.role === 'member') return '/member'
-    if (auth.role === 'coach') return '/coach'
-    if (auth.role === 'consultant') return '/consultant'
+    return homeOf(auth.role)
   }
   return true
 })
